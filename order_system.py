@@ -326,7 +326,7 @@ def search_product(dictated_text: str) -> dict:
         if c["denumire"] not in seen:
             seen.add(c["denumire"])
             unique.append(c)
-        if len(unique) >= 8:
+        if len(unique) >= 60:
             break
 
     if not unique:
@@ -432,6 +432,80 @@ def search_dictated_speech(text: str) -> list[dict]:
         res = search_product(seg)
         if res.get("found"):
             results.append(res)
+    return results
+
+
+def parse_image_with_gemini(image_bytes: bytes, mime_type: str = "image/jpeg") -> list[dict] | None:
+    if not GEMINI_CLIENT:
+        return None
+    from google.genai import types
+    prompt = """Ești asistentul tehnic expert pentru depozitul de instalații sanitare și termice Interconti.
+În imaginea atașată este o listă de materiale / comandă de șantier scrisă de mână sau tipărită de un instalator/client.
+
+Sarcina ta:
+1. Descifrează cu maximă atenție scrisul de mână (chiar dacă este dezordonat, prescurtat sau cu greșeli de exprimare).
+2. Identifică fiecare reper individual, cantitatea dorită și unitatea de măsură (buc, m, colac, set etc.). Dacă nu este specificată cantitatea, presupune 1 buc.
+3. Traduce denumirile colocviale de șantier în termenii tehnici optimi de căutare pentru catalogul depozitului:
+   - "PVC" de scurgere interior = PP sau PVC (ex: "RAMIFICATIE PP 40 45", "COT PP 50 87", "TEAVA PP 110 1M")
+   - Păstrează cu strictețe diametrele (16, 20, 25, 32, 40, 50, 110) și unghiurile (45, 67, 87, 90).
+   - "pex", "purmo", "pex-penta" = TEAVA PEX-PENTA PURMO
+   - "kalde" = KALDE (fitinguri alamă sau PPR)
+   - "1/2" sau "jumătate", "3/4" sau "trei sferturi", "1*" sau "un tol"
+   - robineți trecere, robineți colțar, sifoane pardoseală, filtre Y, aerisitoare, clapete sens etc.
+
+Pentru fiecare produs identificat pe foaie, extrage:
+- "termen_nomenclator": expresia tehnică optimă pentru căutare în catalog
+- "cantitate": număr întreg sau zecimal
+- "um": unitatea de măsură ("buc", "m", "colac", "set", etc.)
+- "text_extras": textul exact descifrat de pe foaie (ex: "5 buc cot 40 la 45")
+
+Răspunde STRICT sub formă de listă JSON validă:
+[
+  {
+    "termen_nomenclator": "RAMIFICATIE PP 40 45",
+    "cantitate": 5,
+    "um": "buc",
+    "text_extras": "5 buc ramificatie 40 la 45"
+  }
+]
+"""
+    try:
+        part = types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
+        resp = GEMINI_CLIENT.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=[part, prompt],
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                temperature=0.1
+            )
+        )
+        data = json.loads(resp.text)
+        if isinstance(data, list) and len(data) > 0:
+            return data
+    except Exception as e:
+        print(f"-> [AI Vision] Eroare la descifrarea imaginii: {e}")
+    return None
+
+
+def search_image_order(image_bytes: bytes, mime_type: str = "image/jpeg") -> list[dict]:
+    gemini_items = parse_image_with_gemini(image_bytes, mime_type)
+    if not gemini_items:
+        return []
+    
+    results = []
+    for g_item in gemini_items:
+        q_term = g_item.get("termen_nomenclator", "")
+        qty = g_item.get("cantitate", 1)
+        um = g_item.get("um", "buc")
+        original_text = g_item.get("text_extras", q_term)
+        
+        res = search_product(q_term)
+        if res.get("found"):
+            res["cantitate"] = qty
+            res["um"] = um
+            res["query_original"] = f"📷 {original_text}"
+            results.append(res)
+    print(f"-> [AI Vision] Găsite {len(results)} repere din imaginea încărcată!")
     return results
 
 

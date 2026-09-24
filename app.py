@@ -7,6 +7,7 @@ import socket
 from flask import Flask, render_template, request, jsonify, send_file
 from order_system import (
     search_dictated_speech, 
+    search_image_order,
     generate_word_document, 
     generate_whatsapp_link, 
     BOGDAN_PHONE
@@ -46,6 +47,33 @@ def api_search():
         }), 200
 
     print(f"-> Găsite {len(results)} repere din frază!")
+    return jsonify({
+        "found": True,
+        "items": results
+    })
+
+@app.route("/api/upload-image", methods=["POST"])
+def api_upload_image():
+    if "image" not in request.files:
+        return jsonify({"found": False, "message": "Nicio imagine trimisă."}), 400
+    
+    file = request.files["image"]
+    if file.filename == "":
+        return jsonify({"found": False, "message": "Fișier neselectat."}), 400
+    
+    image_bytes = file.read()
+    mime_type = file.content_type or "image/jpeg"
+    
+    print(f"IMAGINE PRIMITĂ PENTRU OCR: {len(image_bytes)} bytes, tip: {mime_type}")
+    results = search_image_order(image_bytes, mime_type)
+    
+    if not results:
+        return jsonify({
+            "found": False, 
+            "message": "Nu am putut identifica repere în imagine sau scrisul nu a fost recunoscut."
+        }), 200
+        
+    print(f"-> [Vision] Găsite {len(results)} repere din imaginea încărcată!")
     return jsonify({
         "found": True,
         "items": results

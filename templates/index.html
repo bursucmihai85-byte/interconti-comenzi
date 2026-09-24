@@ -355,6 +355,53 @@
       display: flex;
       flex-direction: column;
       gap: 6px;
+      max-height: 280px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+
+    .photo-upload-container {
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px dashed var(--border);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn-photo {
+      width: 100%;
+      background: linear-gradient(135deg, #0284c7, #0369a1);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      padding: 12px 16px;
+      font-size: 0.95rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: 0 4px 10px -2px rgba(2, 132, 199, 0.3);
+      transition: all 0.2s ease;
+    }
+
+    .btn-photo:active {
+      transform: scale(0.98);
+      background: #075985;
+    }
+
+    .btn-photo:disabled {
+      background: #94a3b8;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+
+    .photo-hint {
+      font-size: 0.75rem;
+      color: var(--text-muted);
     }
 
     .variant-chip {
@@ -510,6 +557,14 @@
         <input type="text" id="manualText" placeholder="Sau scrie aici (chiar și mai multe repere)..." onkeypress="handleKeyPress(event)">
         <button onclick="submitManual()">Adaugă</button>
       </div>
+
+      <div class="photo-upload-container">
+        <input type="file" id="photoInput" accept="image/*" capture="environment" style="display: none;" onchange="handlePhotoUpload(event)">
+        <button class="btn-photo" id="photoBtn" onclick="document.getElementById('photoInput').click()">
+          📷 Încarcă / Fă Poză cu Lista (Scris de Mână)
+        </button>
+        <div class="photo-hint">Poți poza biletul scris de instalator sau alege o poză din telefon</div>
+      </div>
     </div>
 
     <!-- Lista de comenzi -->
@@ -610,6 +665,72 @@
       if (!val) return;
       input.value = '';
       searchAndAdd(val);
+    }
+
+    async function handlePhotoUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const photoBtn = document.getElementById('photoBtn');
+      const transcriptEl = document.getElementById('transcriptText');
+      
+      const originalBtnText = photoBtn.innerHTML;
+      photoBtn.disabled = true;
+      photoBtn.innerHTML = '⏳ Se analizează imaginea cu Gemini AI...';
+      transcriptEl.innerText = '🔍 Gemini AI descifrează scrisul de mână de pe foaie... Te rog așteaptă câteva secunde...';
+
+      const formData = new FormData();
+      formData.append('image', file);
+
+      try {
+        const res = await fetch('/api/upload-image', {
+          method: 'POST',
+          body: formData
+        });
+        const data = await res.json();
+
+        if (data.found && data.items && data.items.length > 0) {
+          data.items.forEach(it => {
+            const rawCandidates = [it.best_match, ...(it.other_candidates || [])];
+            const uniqueCandidates = [];
+            const seen = new Set();
+            for (const c of rawCandidates) {
+              if (c && c.denumire && !seen.has(c.denumire)) {
+                seen.add(c.denumire);
+                uniqueCandidates.push(c);
+              }
+            }
+
+            const item = {
+              id: Date.now() + Math.random(),
+              denumire: it.best_match.denumire,
+              cod: it.best_match.cod,
+              cod_extern: it.best_match.cod_extern,
+              cantitate: it.cantitate || 1,
+              um: it.um || 'buc',
+              is_ambiguous: it.is_ambiguous,
+              dictat: it.query_original,
+              candidates: uniqueCandidates,
+              showVariants: it.is_ambiguous,
+              was_manually_selected: false
+            };
+            orderItems.push(item);
+          });
+          renderList();
+          transcriptEl.innerText = `✅ Au fost adăugate ${data.items.length} repere din poza încărcată!`;
+        } else {
+          alert(data.message || "Nu s-au putut identifica repere în imagine.");
+          transcriptEl.innerText = '❌ Nu s-au putut recunoaște repere pe foaie.';
+        }
+      } catch (err) {
+        console.error(err);
+        alert("Eroare la trimiterea imaginii către server.");
+        transcriptEl.innerText = '❌ Eroare de comunicare la încărcarea imaginii.';
+      } finally {
+        photoBtn.disabled = false;
+        photoBtn.innerHTML = originalBtnText;
+        event.target.value = '';
+      }
     }
 
     async function searchAndAdd(query) {
