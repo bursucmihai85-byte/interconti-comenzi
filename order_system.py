@@ -1,3 +1,10 @@
+import sys
+if hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+
 import re
 import json
 import os
@@ -222,6 +229,11 @@ def normalize_text(text: str) -> tuple[str, int, str]:
         (r'\b(un|unu)\s+(tol|tzol|zol)\b', '1*'),
         (r'\bdoi\s+(toli|tzoli|zoli)\b', '2*'),
         (r'\btrei\s+(toli|tzoli|zoli)\b', '3*'),
+        (r'\binel(?:e)?\s+alunec(?:ator|atoare)?\b', 'manson tece'),
+        (r'\b[ϕφ]\s*(\d+)\b', r'\1'),
+        (r'\b(?:fi|d)\s*(\d+)\b', r'\1'),
+        (r'\b(gondor|glandez)\b', 'olandez'),
+        (r'\bcaseta\s+1200\b', 'caseta metal 1200 distribuitor'),
     ]
 
     for pattern, repl in replacements:
@@ -253,10 +265,7 @@ def search_product(dictated_text: str, allow_fallback: bool = False) -> dict:
         # Filtru 1: Numerele tehnice cerute de utilizator (ex: 40 și 45 sau 1/2) TREBUIE să fie prezente
         missing_num = False
         for n in tech_numbers:
-            if '/' in n:
-                pat = r'(?<![\d\-])' + re.escape(n) + r'(?![\d\-])'
-            else:
-                pat = r'(?<!\d)' + re.escape(n) + r'(?!\d)'
+            pat = r'(?<!\d)' + re.escape(n) + r'(?!\d)'
             if not re.search(pat, den):
                 missing_num = True
                 break
@@ -278,6 +287,18 @@ def search_product(dictated_text: str, allow_fallback: bool = False) -> dict:
         # Bonus dacă conține toate cuvintele cheie
         if key_words and matched_kw == len(key_words):
             score += 25
+
+        # Brand bonus / penalizare
+        major_brands = ['TECE', 'KALDE', 'PURMO', 'VALROM', 'FERRO', 'TIEMME', 'IVAR', 'EVER', 'GF']
+        q_upper = clean_query.upper()
+        for b in major_brands:
+            if b in q_upper:
+                if b in den:
+                    score += 45
+                else:
+                    for other_b in major_brands:
+                        if other_b != b and other_b in den:
+                            score -= 30
             
         # Penalizare severă pentru diametre gigantice necerute (110, 160, 200) dacă utilizatorul nu a cerut 110/160
         extra_nums = den_nums - tech_numbers
@@ -497,75 +518,84 @@ def parse_image_with_gemini(image_bytes: bytes, mime_type: str = "image/jpeg") -
     if not GEMINI_CLIENT:
         return None
     from google.genai import types
-    prompt = """Ești asistentul tehnic expert pentru depozitul de instalații sanitare și termice Interconti.
-În imaginea atașată este o listă de materiale / comandă de șantier scrisă de mână sau tipărită de un instalator/client.
+    import time
+    
+    prompt = """Ești expertul tehnic în instalații sanitare și termice pentru depozitul Interconti (Suceava).
+În imagine este o comandă internă / listă de șantier scrisă de mână pe formular tipizat Interconti sau pe foaie de caiet.
 
-Sarcina ta:
-1. Descifrează cu maximă atenție scrisul de mână (chiar dacă este dezordonat, prescurtat sau cu greșeli de exprimare).
-2. Identifică fiecare reper individual, cantitatea dorită și unitatea de măsură (buc, m, colac, set etc.). Dacă nu este specificată cantitatea, presupune 1 buc.
-3. Traduce denumirile colocviale de șantier în termenii tehnici optimi de căutare pentru catalogul depozitului:
-   - "PVC" de scurgere interior = PP sau PVC (ex: "RAMIFICATIE PP 40 45", "COT PP 50 87", "TEAVA PP 110 1M")
-   - Păstrează cu strictețe diametrele (16, 20, 25, 32, 40, 50, 110) și unghiurile (45, 67, 87, 90).
-   - "pex", "purmo", "pex-penta" = TEAVA PEX-PENTA PURMO
-   - "kalde" = KALDE (fitinguri alamă sau PPR)
-   - "1/2" sau "jumătate", "3/4" sau "trei sferturi", "1*" sau "un tol"
-   - robineți trecere, robineți colțar, sifoane pardoseală, filtre Y, aerisitoare, clapete sens etc.
+REGULI CRUCIALE DE CITIRE PENTRU FORMULARELE DE INSTALAȚII:
+1. Simbolul cerc tăiat 'ϕ' sau 'φ' (pe care OCR-ul îl confundă uneori cu 'p') urmat de numere înseamnă DIAMETRU / FI (ex: 'ϕ 16' = 16, 'ϕ 20' = 20, 'ϕ 26' = 26). Nu scrie niciodată 'p 16' sau 'p 20'! Scrie direct '16' sau '20' sau '26'!
+2. Brandul principal de fitinguri și țevi cu manșon prin alunecare din listă este 'TECE' (scris adesea 'Tece' sau 'Tece.').
+3. 'Inel alunecator' sau 'Inel alunec.' în sistemul Teceflex este MANSON TECE (ex: MANSON TECE 16, MANSON TECE 20, MANSON TECE 25).
+4. 'Teuri' (scris cu T mare caligrafic) = TECE TEU ALAMA (ex: TECE TEU ALAMA 16).
+5. 'Coturi ... F Tece' = TECE COT CU TALPA ALAMA 16-1/2 FI sau TECE COT ALAMA 16-1/2 FI.
+6. 'Cot ... Tece' = TECE COT ALAMA (ex: TECE COT ALAMA 20-3/4 FE, TECE COT ALAMA 20-1/2 FI, TECE COT ALAMA 25-3/4 FI, TECE COT ALAMA 25-1 FE).
+7. 'Teava fi 16 Tece rosie' = TECE TEAVA MULTISTRAT COPEX ROSU 16 (unitate de măsură: m).
+8. 'Teava fi 16 Tece albastra' = TECE TEAVA MULTISTRAT COPEX ALBASTRU 16 (unitate de măsură: m).
+9. 'Robinet cu Olandez 1"' / 'Robinet cu Olandez 3/4"' (litera 'Ol' caligrafică nu este 'Gondor', ci Olandez!).
+10. 'Dop proba' / 'dop 1/2 proba' = CAL DOP PROBA 1/2 (dopuri de plastic pentru probă instalație).
+11. 'Caseta 1200' = CASETA METAL 1200 DISTRIBUITOR (sau dulap distribuitor).
+12. Dacă pe un rând sunt mai multe repere (ex: 'Cui beton = 1 cut', 'Disc = 1 buc', 'Caseta 1200 = 1'), separă-le obligatoriu ca articole distincte!
+13. Include obligatoriu informațiile din coloana 'Observații' în termenul tehnic (ex: 'Distribuitor modular 3/4 5 cai rece', 'Distribuitor modular 3/4 3 cai cald', 'Distribuitor tur-retur Purmo 9 circuite').
+14. Filet: 'M' = FE (Filet Exterior / tată), 'F' = FI (Filet Interior / mamă), 'MF' = mamă-tată, 'FF' = mamă-mamă.
 
 Pentru fiecare produs identificat pe foaie, extrage:
 - "termen_nomenclator": expresia tehnică optimă pentru căutare în catalog
 - "cantitate": număr întreg sau zecimal
-- "um": unitatea de măsură ("buc", "m", "colac", "set", etc.)
-- "text_extras": textul exact descifrat de pe foaie (ex: "5 buc cot 40 la 45")
+- "um": unitatea de măsură ("buc", "m", "colac", "cut", "set", etc.)
+- "text_extras": textul exact descifrat de pe foaie (ex: "5 coturi 16 x 1/2 F Tece")
 
 Răspunde STRICT sub formă de listă JSON validă:
 [
   {
-    "termen_nomenclator": "RAMIFICATIE PP 40 45",
-    "cantitate": 5,
-    "um": "buc",
-    "text_extras": "5 buc ramificatie 40 la 45"
+    "termen_nomenclator": "CUI BETON",
+    "cantitate": 1,
+    "um": "cut",
+    "text_extras": "Cui beton = 1 cut"
   }
 ]
 """
     try:
         part = types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
         
-        # Încercăm modelele active recomandate de Google (gemini-3.6-flash este modelul principal stabil)
-        import time
-        models_to_try = ['gemini-3.6-flash', 'gemini-3.7-flash', 'gemini-3.8-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite']
+        # Ordine optimă: gemini-3.5-flash-lite este cel mai rapid și stabil pentru OCR, urmat de gemini-3.6-flash și 3.7
+        models_to_try = ['gemini-3.5-flash-lite', 'gemini-3.6-flash', 'gemini-3.7-flash']
         data = None
         for m_name in models_to_try:
-            try:
-                resp = GEMINI_CLIENT.models.generate_content(
-                    model=m_name,
-                    contents=[part, prompt],
-                    config=types.GenerateContentConfig(
-                        response_mime_type="application/json",
-                        temperature=0.1
+            for attempt in range(2):
+                try:
+                    resp = GEMINI_CLIENT.models.generate_content(
+                        model=m_name,
+                        contents=[part, prompt],
+                        config=types.GenerateContentConfig(
+                            response_mime_type="application/json",
+                            temperature=0.1
+                        )
                     )
-                )
-                clean_text = resp.text.strip()
-                if clean_text.startswith("```json"):
-                    clean_text = clean_text[7:]
-                elif clean_text.startswith("```"):
-                    clean_text = clean_text[3:]
-                if clean_text.endswith("```"):
-                    clean_text = clean_text[:-3]
-                clean_text = clean_text.strip()
+                    clean_text = resp.text.strip()
+                    if clean_text.startswith("```json"):
+                        clean_text = clean_text[7:]
+                    elif clean_text.startswith("```"):
+                        clean_text = clean_text[3:]
+                    if clean_text.endswith("```"):
+                        clean_text = clean_text[:-3]
+                    clean_text = clean_text.strip()
 
-                parsed = json.loads(clean_text)
-                if isinstance(parsed, list) and len(parsed) > 0:
-                    data = parsed
-                    print(f"-> [AI Vision] Succes descifrare imagine cu modelul {m_name} ({len(data)} repere gasite pe foaie)!")
-                    break
-            except Exception as e_m:
-                print(f"-> [AI Vision] Modelul {m_name} a intampinat eroare: {e_m}")
-                time.sleep(0.5)
+                    parsed = json.loads(clean_text)
+                    if isinstance(parsed, list) and len(parsed) > 0:
+                        data = parsed
+                        print(f"-> [AI Vision] Succes descifrare imagine cu modelul {m_name} ({len(data)} repere gasite pe foaie)!")
+                        break
+                except Exception as e_m:
+                    print(f"-> [AI Vision] Modelul {m_name} (incercarea {attempt+1}) eroare: {e_m}")
+                    time.sleep(1.5)
+            if data:
+                break
 
         if data:
             return data
     except Exception as e:
-        print(f"-> [AI Vision] Eroare generală la procesarea imaginii: {e}")
+        print(f"-> [AI Vision] Eroare generala la procesarea imaginii: {e}")
     return None
 
 
@@ -580,6 +610,10 @@ def search_image_order(image_bytes: bytes, mime_type: str = "image/jpeg") -> lis
         qty = g_item.get("cantitate", 1)
         um = g_item.get("um", "buc")
         original_text = g_item.get("text_extras", q_term)
+        
+        # Înlocuim simbolurile grecești de diametru (phi) cu 'fi' pentru compatibilitate totală
+        original_text = original_text.replace('φ', 'fi').replace('ϕ', 'fi').replace('Φ', 'fi')
+        q_term = q_term.replace('φ', 'fi').replace('ϕ', 'fi').replace('Φ', 'fi')
         
         # Căutăm cu fallback activat obligatoriu!
         res = search_product(q_term, allow_fallback=True)
