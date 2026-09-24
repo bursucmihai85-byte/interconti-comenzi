@@ -27,6 +27,9 @@ BOGDAN_PHONE = "40733959906"
 
 # Inițializare Gemini AI
 GEMINI_CLIENT = None
+LAST_INIT_ERROR = ""
+LAST_VISION_ERROR = ""
+
 try:
     from google import genai
     from google.genai import types
@@ -37,13 +40,15 @@ try:
             if line.strip().startswith("GEMINI_API_KEY="):
                 gemini_key = line.split("=", 1)[1].strip()
                 break
-    if not gemini_key:
-        import base64
-        gemini_key = base64.b64decode("QVEuQWI4Uk42S1l3OVl1RHlQcUtJTHlPMURCbTVWNGNGUUdIV3RXUkVzVFh3ejZybkFYNlE=").decode("utf-8")
+    import base64
+    valid_fallback_key = base64.b64decode("QVEuQWI4Uk42S1l3OVl1RHlQcUtJTHlPMURCbTVWNGNGUUdIV3RXUkVzVFh3ejZybkFYNlE=").decode("utf-8")
+    if not gemini_key or not gemini_key.startswith("AQ."):
+        gemini_key = valid_fallback_key
     if gemini_key:
         GEMINI_CLIENT = genai.Client(api_key=gemini_key)
         print("-> [AI] Gemini Client initializat cu succes in order_system!")
 except Exception as e:
+    LAST_INIT_ERROR = str(e)
     print(f"-> [AI] Initializare Gemini esuata: {e}")
 
 PRODUCT_TYPES = [
@@ -617,7 +622,10 @@ def search_dictated_speech(text: str) -> list[dict]:
 
 
 def parse_image_with_gemini(image_bytes: bytes, mime_type: str = "image/jpeg") -> list[dict] | None:
+    global LAST_VISION_ERROR
     if not GEMINI_CLIENT:
+        LAST_VISION_ERROR = f"GEMINI_CLIENT este None! Init error: {LAST_INIT_ERROR}"
+        print(f"-> [AI Vision] {LAST_VISION_ERROR}")
         return None
     from google.genai import types
     import time
@@ -693,7 +701,8 @@ Răspunde STRICT sub formă de listă JSON validă:
                         print(f"-> [AI Vision] Succes descifrare imagine cu modelul {m_name} ({len(data)} repere gasite pe foaie)!")
                         break
                 except Exception as e_m:
-                    print(f"-> [AI Vision] Modelul {m_name} (incercarea {attempt+1}) eroare: {e_m}")
+                    LAST_VISION_ERROR = f"Model {m_name} (incercarea {attempt+1}) eroare: {e_m}"
+                    print(f"-> [AI Vision] {LAST_VISION_ERROR}")
                     time.sleep(1.5)
             if data:
                 break
@@ -701,7 +710,8 @@ Răspunde STRICT sub formă de listă JSON validă:
         if data:
             return data
     except Exception as e:
-        print(f"-> [AI Vision] Eroare generala la procesarea imaginii: {e}")
+        LAST_VISION_ERROR = f"Eroare generala la procesarea imaginii: {e}"
+        print(f"-> [AI Vision] {LAST_VISION_ERROR}")
     return None
 
 

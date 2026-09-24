@@ -70,15 +70,46 @@ def api_upload_image():
     results = search_image_order(image_bytes, mime_type)
     
     if not results:
+        import order_system
+        v_err = getattr(order_system, "LAST_VISION_ERROR", "")
+        msg = f"Eroare recunoaștere: {v_err}" if v_err else "Nu am putut identifica repere în imagine sau scrisul nu a fost recunoscut."
         return jsonify({
             "found": False, 
-            "message": "Nu am putut identifica repere în imagine sau scrisul nu a fost recunoscut."
+            "message": msg,
+            "vision_error": v_err
         }), 200
         
     print(f"-> [Vision] Găsite {len(results)} repere din imaginea încărcată!")
     return jsonify({
         "found": True,
         "items": results
+    })
+
+@app.route("/api/debug-vision")
+def api_debug_vision():
+    import order_system
+    raw_env = os.environ.get("GEMINI_API_KEY", "")
+    env_info = f"len={len(raw_env)}, starts={raw_env[:5]}..." if raw_env else "NOT_SET"
+    
+    client_status = "NONE"
+    ping_status = "NOT_TESTED"
+    if order_system.GEMINI_CLIENT:
+        client_status = "INITIALIZED"
+        try:
+            r = order_system.GEMINI_CLIENT.models.generate_content(
+                model="gemini-3.5-flash-lite",
+                contents="ping"
+            )
+            ping_status = f"OK: {r.text[:30]}"
+        except Exception as e:
+            ping_status = f"PING_ERROR: {e}"
+            
+    return jsonify({
+        "env_GEMINI_API_KEY": env_info,
+        "client_status": client_status,
+        "ping_status": ping_status,
+        "last_init_error": getattr(order_system, "LAST_INIT_ERROR", ""),
+        "last_vision_error": getattr(order_system, "LAST_VISION_ERROR", "")
     })
 
 @app.route("/api/learn", methods=["POST"])
