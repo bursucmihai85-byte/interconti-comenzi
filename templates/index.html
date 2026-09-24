@@ -294,6 +294,39 @@
       margin-top: 4px;
     }
 
+    .unmatched-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: #dc2626;
+      color: #ffffff;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 800;
+      align-self: flex-start;
+      margin-top: 4px;
+    }
+
+    .edit-btn {
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      color: #1e293b;
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 6px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      margin-top: 4px;
+    }
+
+    .edit-btn:active {
+      background: #e2e8f0;
+    }
+
     .verified-badge {
       display: inline-flex;
       align-items: center;
@@ -709,6 +742,7 @@
               cantitate: it.cantitate || 1,
               um: it.um || 'buc',
               is_ambiguous: it.is_ambiguous,
+              is_unmatched: it.is_unmatched || false,
               dictat: it.query_original,
               candidates: uniqueCandidates,
               showVariants: it.is_ambiguous,
@@ -764,6 +798,7 @@
               cantitate: it.cantitate || 1,
               um: it.um || 'buc',
               is_ambiguous: it.is_ambiguous,
+              is_unmatched: it.is_unmatched || false,
               dictat: it.query_original,
               candidates: uniqueCandidates,
               showVariants: it.is_ambiguous, // dacă necesită verificare, deschide direct variantele!
@@ -814,6 +849,34 @@
       renderList();
     }
 
+    function editItemName(id) {
+      const it = orderItems.find(x => x.id === id);
+      if (!it) return;
+      const currentClean = it.denumire.replace(/^[⚠️\[\]A-Z\s]+(?:\s-\s|\s)/, '');
+      const defaultVal = it.is_unmatched ? (it.dictat ? it.dictat.replace(/^\[Foto\]\s*/, '') : currentClean) : it.denumire;
+      const newName = prompt("Modifică denumirea produsului / codul:", defaultVal);
+      if (newName && newName.trim() !== "") {
+        it.denumire = newName.trim().toUpperCase();
+        it.is_ambiguous = false;
+        it.is_unmatched = false;
+        it.was_manually_selected = true;
+        renderList();
+      }
+    }
+
+    function editQty(id) {
+      const it = orderItems.find(x => x.id === id);
+      if (!it) return;
+      const newQty = prompt("Introdu cantitatea dorită:", it.cantitate);
+      if (newQty !== null) {
+        const parsed = parseFloat(newQty.replace(',', '.'));
+        if (!isNaN(parsed) && parsed > 0) {
+          it.cantitate = parsed;
+          renderList();
+        }
+      }
+    }
+
     function clearAll() {
       if (confirm("Sigur vrei să golești toată lista curentă?")) {
         orderItems = [];
@@ -851,11 +914,14 @@
       let html = '';
       orderItems.forEach((it, index) => {
         const ambigClass = it.is_ambiguous ? 'ambiguous' : '';
-        const warnTag = it.is_ambiguous ? `
-          <div class="warn-badge">[ ! ] NECESITĂ VERIFICARE</div>
-        ` : (it.was_manually_selected ? `
-          <div class="verified-badge">✓ VARIANTĂ CONFIRMATĂ</div>
-        ` : '');
+        let badgeHtml = '';
+        if (it.is_unmatched) {
+          badgeHtml = `<div class="unmatched-badge">⚠️ NEIDENTIFICAT ÎN CATALOG</div>`;
+        } else if (it.is_ambiguous) {
+          badgeHtml = `<div class="warn-badge">[ ! ] NECESITĂ VERIFICARE</div>`;
+        } else if (it.was_manually_selected) {
+          badgeHtml = `<div class="verified-badge">✓ VARIANTĂ CONFIRMATĂ</div>`;
+        }
 
         let variantsHtml = '';
         if (it.candidates && it.candidates.length > 1) {
@@ -892,9 +958,12 @@
         html += `
           <div class="item-card ${ambigClass}">
             <div class="card-top">
-              <div>
+              <div style="flex: 1;">
                 <div class="item-name">${index + 1}. ${it.denumire}</div>
-                ${warnTag}
+                <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 4px;">
+                  ${badgeHtml}
+                  <button class="edit-btn" onclick="editItemName(${it.id})" title="Editează denumirea">✏️ Editează</button>
+                </div>
               </div>
               <button class="del-btn" onclick="removeItem(${it.id})" title="Șterge">✕</button>
             </div>
@@ -903,7 +972,7 @@
               <div class="item-code">Cod: ${it.cod_extern || it.cod || '-'}</div>
               <div class="qty-controls">
                 <button class="qty-btn" onclick="updateQty(${it.id}, -1)">-</button>
-                <div class="qty-display">${it.cantitate} ${it.um}</div>
+                <div class="qty-display" onclick="editQty(${it.id})" style="cursor: pointer;" title="Apasă pentru a schimba cantitatea">${it.cantitate} ${it.um}</div>
                 <button class="qty-btn" onclick="updateQty(${it.id}, 1)">+</button>
               </div>
             </div>

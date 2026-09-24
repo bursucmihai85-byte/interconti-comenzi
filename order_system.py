@@ -230,7 +230,7 @@ def normalize_text(text: str) -> tuple[str, int, str]:
     t = re.sub(r'\s+', ' ', t).strip()
     return t, cantitate, um
 
-def search_product(dictated_text: str) -> dict:
+def search_product(dictated_text: str, allow_fallback: bool = False) -> dict:
     clean_query, qty, um = normalize_text(dictated_text)
     
     clean_query_spaced = re.sub(r'\b(\d+)[\s\-]+(\d+)\b', r'\1 \2', clean_query)
@@ -330,6 +330,46 @@ def search_product(dictated_text: str) -> dict:
             break
 
     if not unique:
+        if allow_fallback:
+            broad_matches = []
+            clean_upper = clean_query.upper()
+            for item in NOMENCLATOR:
+                den = item["denumire"].upper()
+                s = fuzz.token_set_ratio(clean_upper, den)
+                if s >= 35:
+                    broad_matches.append({
+                        "denumire": item["denumire"],
+                        "cod": item["cod"],
+                        "cod_extern": item["cod_extern"],
+                        "score": s
+                    })
+            broad_matches.sort(key=lambda x: x["score"], reverse=True)
+            seen_b = set()
+            broad_unique = []
+            for c in broad_matches:
+                if c["denumire"] not in seen_b:
+                    seen_b.add(c["denumire"])
+                    broad_unique.append(c)
+                if len(broad_unique) >= 30:
+                    break
+                    
+            return {
+                "found": True,
+                "is_unmatched": True,
+                "is_ambiguous": True,
+                "query_original": dictated_text,
+                "query_normalized": clean_query,
+                "cantitate": qty,
+                "um": um,
+                "best_match": {
+                    "denumire": f"[DE VERIFICAT] {clean_query.upper()}",
+                    "cod": "-",
+                    "cod_extern": "-",
+                    "score": 0
+                },
+                "other_candidates": broad_unique
+            }
+
         return {
             "found": False,
             "query_original": dictated_text,
@@ -390,16 +430,34 @@ Răspunde STRICT sub formă de listă JSON validă:
 """
     try:
         from google.genai import types
-        resp = GEMINI_CLIENT.models.generate_content(
-            model='gemini-3.5-flash-lite',
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                temperature=0.1
-            )
-        )
-        data = json.loads(resp.text)
-        if isinstance(data, list) and len(data) > 0:
+        import time
+        models_to_try = ['gemini-3.6-flash', 'gemini-3.7-flash', 'gemini-3.5-flash-lite']
+        data = None
+        for m_name in models_to_try:
+            try:
+                resp = GEMINI_CLIENT.models.generate_content(
+                    model=m_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        temperature=0.1
+                    )
+                )
+                clean_text = resp.text.strip()
+                if clean_text.startswith("```json"):
+                    clean_text = clean_text[7:]
+                elif clean_text.startswith("```"):
+                    clean_text = clean_text[3:]
+                if clean_text.endswith("```"):
+                    clean_text = clean_text[:-3]
+                clean_text = clean_text.strip()
+                parsed = json.loads(clean_text)
+                if isinstance(parsed, list) and len(parsed) > 0:
+                    data = parsed
+                    break
+            except Exception as e_m:
+                time.sleep(0.5)
+        if data:
             return data
     except Exception as e:
         print(f"-> [AI] Eroare la procesarea cu Gemini: {e}")
@@ -414,12 +472,13 @@ def search_dictated_speech(text: str) -> list[dict]:
             q_term = g_item.get("termen_nomenclator", "")
             qty = g_item.get("cantitate", 1)
             um = g_item.get("um", "buc")
-            res = search_product(q_term)
-            if res.get("found"):
-                res["cantitate"] = qty
-                res["um"] = um
-                res["query_original"] = text
-                results.append(res)
+            res = search_product(q_term, allow_fallback=True)
+            res["cantitate"] = qty
+            res["um"] = um
+            res["query_original"] = q_term or text
+            if res.get("is_unmatched"):
+                res["best_match"]["denumire"] = f"[DE VERIFICAT] {(q_term or text).upper()}"
+            results.append(res)
         if results:
             print(f"-> [AI] Gemini a identificat cu succes {len(results)} repere din textul dictat!")
             return results
@@ -429,9 +488,8 @@ def search_dictated_speech(text: str) -> list[dict]:
     segments = parse_multi_item_dictation(text)
     results = []
     for seg in segments:
-        res = search_product(seg)
-        if res.get("found"):
-            results.append(res)
+        res = search_product(seg, allow_fallback=True)
+        results.append(res)
     return results
 
 
@@ -471,19 +529,43 @@ Răspunde STRICT sub formă de listă JSON validă:
 """
     try:
         part = types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
-        resp = GEMINI_CLIENT.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=[part, prompt],
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                temperature=0.1
-            )
-        )
-        data = json.loads(resp.text)
-        if isinstance(data, list) and len(data) > 0:
+        
+        # Încercăm modelele active recomandate de Google (gemini-3.6-flash este modelul principal stabil)
+        import time
+        models_to_try = ['gemini-3.6-flash', 'gemini-3.7-flash', 'gemini-3.8-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite']
+        data = None
+        for m_name in models_to_try:
+            try:
+                resp = GEMINI_CLIENT.models.generate_content(
+                    model=m_name,
+                    contents=[part, prompt],
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        temperature=0.1
+                    )
+                )
+                clean_text = resp.text.strip()
+                if clean_text.startswith("```json"):
+                    clean_text = clean_text[7:]
+                elif clean_text.startswith("```"):
+                    clean_text = clean_text[3:]
+                if clean_text.endswith("```"):
+                    clean_text = clean_text[:-3]
+                clean_text = clean_text.strip()
+
+                parsed = json.loads(clean_text)
+                if isinstance(parsed, list) and len(parsed) > 0:
+                    data = parsed
+                    print(f"-> [AI Vision] Succes descifrare imagine cu modelul {m_name} ({len(data)} repere gasite pe foaie)!")
+                    break
+            except Exception as e_m:
+                print(f"-> [AI Vision] Modelul {m_name} a intampinat eroare: {e_m}")
+                time.sleep(0.5)
+
+        if data:
             return data
     except Exception as e:
-        print(f"-> [AI Vision] Eroare la descifrarea imaginii: {e}")
+        print(f"-> [AI Vision] Eroare generală la procesarea imaginii: {e}")
     return None
 
 
@@ -499,13 +581,19 @@ def search_image_order(image_bytes: bytes, mime_type: str = "image/jpeg") -> lis
         um = g_item.get("um", "buc")
         original_text = g_item.get("text_extras", q_term)
         
-        res = search_product(q_term)
-        if res.get("found"):
-            res["cantitate"] = qty
-            res["um"] = um
-            res["query_original"] = f"📷 {original_text}"
-            results.append(res)
-    print(f"-> [AI Vision] Găsite {len(results)} repere din imaginea încărcată!")
+        # Căutăm cu fallback activat obligatoriu!
+        res = search_product(q_term, allow_fallback=True)
+        res["cantitate"] = qty
+        res["um"] = um
+        res["query_original"] = f"[Foto] {original_text}"
+        
+        # Dacă reperul nu s-a regăsit în catalog, păstrăm numele original citit din poză
+        if res.get("is_unmatched"):
+            res["best_match"]["denumire"] = f"[DE VERIFICAT] {original_text.upper()}"
+            
+        results.append(res)
+
+    print(f"-> [AI Vision] Returnate {len(results)} repere (inclusiv cele pentru verificare manuala)!")
     return results
 
 
