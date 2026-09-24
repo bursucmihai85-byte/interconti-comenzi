@@ -9,7 +9,9 @@ from order_system import (
     search_dictated_speech, 
     search_image_order,
     generate_word_document, 
-    generate_whatsapp_link, 
+    generate_whatsapp_link,
+    save_learned_mapping,
+    load_learned_mappings,
     BOGDAN_PHONE
 )
 
@@ -77,6 +79,28 @@ def api_upload_image():
     return jsonify({
         "found": True,
         "items": results
+    })
+
+@app.route("/api/learn", methods=["POST"])
+def api_learn():
+    data = request.json or {}
+    query = data.get("query", "").strip()
+    item_data = data.get("item", {})
+    if not query or not item_data:
+        return jsonify({"success": False, "message": "Date incomplete."}), 400
+
+    success = save_learned_mapping(query, item_data)
+    if success:
+        return jsonify({"success": True})
+    return jsonify({"success": False, "message": "Nu s-a putut salva asocierea."}), 500
+
+@app.route("/api/learnings", methods=["GET"])
+def api_learnings():
+    mappings = load_learned_mappings()
+    return jsonify({
+        "success": True,
+        "count": len(mappings),
+        "mappings": mappings
     })
 
 @app.route("/api/generate", methods=["POST"])

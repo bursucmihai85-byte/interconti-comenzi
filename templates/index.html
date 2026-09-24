@@ -308,6 +308,20 @@
       margin-top: 4px;
     }
 
+    .learned-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: #0284c7;
+      color: #ffffff;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 800;
+      align-self: flex-start;
+      margin-top: 4px;
+    }
+
     .edit-btn {
       background: #f1f5f9;
       border: 1px solid #cbd5e1;
@@ -743,6 +757,7 @@
               um: it.um || 'buc',
               is_ambiguous: it.is_ambiguous,
               is_unmatched: it.is_unmatched || false,
+              was_learned: it.was_learned || false,
               dictat: it.query_original,
               candidates: uniqueCandidates,
               showVariants: it.is_ambiguous,
@@ -799,6 +814,7 @@
               um: it.um || 'buc',
               is_ambiguous: it.is_ambiguous,
               is_unmatched: it.is_unmatched || false,
+              was_learned: it.was_learned || false,
               dictat: it.query_original,
               candidates: uniqueCandidates,
               showVariants: it.is_ambiguous, // dacă necesită verificare, deschide direct variantele!
@@ -832,8 +848,28 @@
       it.cod_extern = codExtern;
       it.cod = cod;
       it.is_ambiguous = false;
+      it.is_unmatched = false;
       it.was_manually_selected = true;
+      it.was_learned = true;
       it.showVariants = false;
+
+      // Salvăm asocierea în memoria permanentă de învățare a aplicației!
+      const queryToLearn = it.dictat || it.denumire;
+      if (queryToLearn) {
+        fetch('/api/learn', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: queryToLearn,
+            item: {
+              denumire: denumire,
+              cod: cod,
+              cod_extern: codExtern
+            }
+          })
+        }).catch(err => console.error("Eroare salvare invatare:", err));
+      }
+
       renderList();
     }
 
@@ -856,10 +892,29 @@
       const defaultVal = it.is_unmatched ? (it.dictat ? it.dictat.replace(/^\[Foto\]\s*/, '') : currentClean) : it.denumire;
       const newName = prompt("Modifică denumirea produsului / codul:", defaultVal);
       if (newName && newName.trim() !== "") {
-        it.denumire = newName.trim().toUpperCase();
+        const cleanName = newName.trim().toUpperCase();
+        it.denumire = cleanName;
         it.is_ambiguous = false;
         it.is_unmatched = false;
         it.was_manually_selected = true;
+        it.was_learned = true;
+
+        const queryToLearn = it.dictat || it.denumire;
+        if (queryToLearn) {
+          fetch('/api/learn', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              query: queryToLearn,
+              item: {
+                denumire: cleanName,
+                cod: it.cod || "-",
+                cod_extern: it.cod_extern || "-"
+              }
+            })
+          }).catch(err => console.error("Eroare salvare invatare:", err));
+        }
+
         renderList();
       }
     }
@@ -915,7 +970,9 @@
       orderItems.forEach((it, index) => {
         const ambigClass = it.is_ambiguous ? 'ambiguous' : '';
         let badgeHtml = '';
-        if (it.is_unmatched) {
+        if (it.was_learned) {
+          badgeHtml = `<div class="learned-badge">🧠 MEMORAT AUTOMAT</div>`;
+        } else if (it.is_unmatched) {
           badgeHtml = `<div class="unmatched-badge">⚠️ NEIDENTIFICAT ÎN CATALOG</div>`;
         } else if (it.is_ambiguous) {
           badgeHtml = `<div class="warn-badge">[ ! ] NECESITĂ VERIFICARE</div>`;

@@ -242,8 +242,96 @@ def normalize_text(text: str) -> tuple[str, int, str]:
     t = re.sub(r'\s+', ' ', t).strip()
     return t, cantitate, um
 
+LEARNED_FILE = os.path.join(os.path.dirname(__file__), "learned_mappings.json")
+
+def load_learned_mappings() -> dict:
+    if os.path.exists(LEARNED_FILE):
+        try:
+            with open(LEARNED_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Eroare citire memorie: {e}")
+            return {}
+    return {}
+
+def clean_learn_key(text: str) -> str:
+    t = text.lower()
+    t = re.sub(r'^\[(?:foto|dictat)\]\s*', '', t)
+    t = re.sub(r'^\d+[\s\.\-]+(?:buc|m|cut|set|colac|cutie|role)?\s*', '', t)
+    t = re.sub(r'\s+', ' ', t).strip()
+    return t
+
+def save_learned_mapping(raw_query: str, product_data: dict) -> bool:
+    key = clean_learn_key(raw_query)
+    if not key or len(key) < 3:
+        return False
+    
+    mappings = load_learned_mappings()
+    mappings[key] = {
+        "denumire": product_data.get("denumire"),
+        "cod": product_data.get("cod", "-"),
+        "cod_extern": product_data.get("cod_extern", "-"),
+        "saved_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    }
+    
+    try:
+        with open(LEARNED_FILE, "w", encoding="utf-8") as f:
+            json.dump(mappings, f, ensure_ascii=False, indent=2)
+        print(f"-> [MEMORIE] Asociere retinuta: '{key}' -> {product_data.get('denumire')}")
+        return True
+    except Exception as e:
+        print(f"Eroare salvare memorie: {e}")
+        return False
+
+def check_learned_mapping(clean_query: str) -> dict | None:
+    mappings = load_learned_mappings()
+    if not mappings:
+        return None
+        
+    q_key = clean_learn_key(clean_query)
+    if not q_key:
+        return None
+        
+    # 1. Potrivire exactă
+    if q_key in mappings:
+        return mappings[q_key]
+        
+    # 2. Potrivire fuzzy strânsă (>= 90%)
+    best_item = None
+    best_score = 0
+    for k, v in mappings.items():
+        s = fuzz.token_set_ratio(q_key, k)
+        if s > best_score:
+            best_score = s
+            best_item = v
+            
+    if best_score >= 90:
+        return best_item
+        
+    return None
+
 def search_product(dictated_text: str, allow_fallback: bool = False) -> dict:
     clean_query, qty, um = normalize_text(dictated_text)
+    
+    # 0. Verificare mai întâi în memoria de învățare a aplicației!
+    learned = check_learned_mapping(clean_query) or check_learned_mapping(dictated_text)
+    if learned:
+        return {
+            "found": True,
+            "is_ambiguous": False,
+            "was_learned": True,
+            "query_original": dictated_text,
+            "query_normalized": clean_query,
+            "cantitate": qty,
+            "um": um,
+            "best_match": {
+                "denumire": learned["denumire"],
+                "cod": learned.get("cod", "-"),
+                "cod_extern": learned.get("cod_extern", "-"),
+                "score": 100
+            },
+            "other_candidates": []
+        }
     
     clean_query_spaced = re.sub(r'\b(\d+)[\s\-]+(\d+)\b', r'\1 \2', clean_query)
     tech_numbers = set(re.findall(r'(?:\d+\/\d+|\d+\*|\b\d+\b)', clean_query_spaced))
