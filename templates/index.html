@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Interconti — Comandă Rapidă</title>
+  <style>
+    :root {
+      --primary: #1e3a8a;
+      --primary-dark: #0f172a;
+      --accent: #10b981;
+      --accent-hover: #059669;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text-main);
+      padding-bottom: 120px;
+    }
+
+    header {
+      background: linear-gradient(135deg, var(--primary) 0%, #172554 100%);
+      color: white;
+      padding: 16px 20px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .brand {
+      font-size: 1.15rem;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+
+    .status-badge {
+      font-size: 0.75rem;
+      background: rgba(255,255,255,0.15);
+      padding: 4px 10px;
+      border-radius: 999px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      background: var(--accent);
+      border-radius: 50%;
+    }
+
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 16px;
+    }
+
+    /* Zona Microfon & Dictare */
+    .voice-section {
+      background: var(--card-bg);
+      border-radius: 20px;
+      padding: 24px 20px;
+      text-align: center;
+      box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05);
+      margin-bottom: 20px;
+      border: 1px solid var(--border);
+    }
+
+    .mic-btn {
+      width: 84px;
+      height: 84px;
+      border-radius: 50%;
+      background: var(--primary);
+      border: none;
+      color: white;
+      font-size: 32px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 10px 20px -5px rgba(30, 58, 138, 0.4);
+      transition: all 0.2s ease;
+      position: relative;
+    }
+
+    .mic-btn:active {
+      transform: scale(0.94);
+    }
+
+    .mic-btn.listening {
+      background: var(--danger);
+      animation: pulse 1.4s infinite;
+      box-shadow: 0 0 0 12px rgba(239, 68, 68, 0.2);
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.08); }
+      100% { transform: scale(1); }
+    }
+
+    .mic-label {
+      margin-top: 14px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+
+    .transcript-box {
+      min-height: 24px;
+      margin-top: 10px;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      font-style: italic;
+    }
+
+    /* Input text manual */
+    .manual-input {
+      display: flex;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    .manual-input input {
+      flex: 1;
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      font-size: 0.95rem;
+      outline: none;
+      background: #f1f5f9;
+    }
+
+    .manual-input input:focus {
+      border-color: var(--primary);
+      background: #fff;
+    }
+
+    .manual-input button {
+      background: var(--primary);
+      color: white;
+      border: none;
+      padding: 0 18px;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 0.9rem;
+      cursor: pointer;
+    }
+
+    /* Lista de comenzi */
+    .order-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      padding: 0 4px;
+    }
+
+    .order-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+    }
+
+    .clear-btn {
+      background: none;
+      border: none;
+      color: var(--danger);
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .item-card {
+      background: var(--card-bg);
+      border-radius: 14px;
+      padding: 14px 16px;
+      margin-bottom: 10px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.03);
+      border: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      position: relative;
+    }
+
+    .item-card.ambiguous {
+      border-left: 5px solid #000;
+      background: #f8fafc;
+    }
+
+    .card-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+    }
+
+    .item-name {
+      font-weight: 700;
+      font-size: 0.95rem;
+      line-height: 1.35;
+      color: var(--text-main);
+    }
+
+    .del-btn {
+      background: none;
+      border: none;
+      color: #94a3b8;
+      font-size: 1.2rem;
+      cursor: pointer;
+      padding: 0 4px;
+    }
+
+    .del-btn:hover {
+      color: var(--danger);
+    }
+
+    .card-bottom {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-top: 6px;
+      border-top: 1px dashed var(--border);
+    }
+
+    .item-code {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      font-family: monospace;
+    }
+
+    .qty-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .qty-btn {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: #f1f5f9;
+      font-weight: bold;
+      font-size: 1rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .qty-btn:active {
+      background: #e2e8f0;
+    }
+
+    .qty-display {
+      font-weight: 700;
+      font-size: 0.95rem;
+      min-width: 32px;
+      text-align: center;
+    }
+
+    .warn-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: #000000;
+      color: #ffffff;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 800;
+      align-self: flex-start;
+      margin-top: 4px;
+    }
+
+    .verified-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: #16a34a;
+      color: #ffffff;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      align-self: flex-start;
+      margin-top: 4px;
+    }
+
+    .variants-wrapper {
+      margin-top: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .variant-toggle-btn {
+      align-self: flex-start;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      color: #1d4ed8;
+      font-size: 0.78rem;
+      font-weight: 600;
+      padding: 5px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .variant-toggle-btn:active {
+      background: #dbeafe;
+    }
+
+    .variants-box {
+      background: #f8fafc;
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      padding: 10px;
+      margin-top: 4px;
+    }
+
+    .variants-title {
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: #475569;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .variants-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .variant-chip {
+      background: white;
+      border: 1.5px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 8px 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      touch-action: manipulation;
+    }
+
+    .variant-chip:active {
+      transform: scale(0.98);
+      background: #f1f5f9;
+    }
+
+    .variant-chip.selected {
+      border-color: #2563eb;
+      background: #f0fdf4;
+      box-shadow: 0 0 0 1px #2563eb;
+    }
+
+    .var-info {
+      flex: 1;
+      margin-right: 8px;
+    }
+
+    .var-name {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--text-main);
+      line-height: 1.3;
+    }
+
+    .var-code {
+      font-size: 0.72rem;
+      color: #64748b;
+      font-family: monospace;
+      margin-top: 2px;
+    }
+
+    .var-check {
+      font-size: 0.75rem;
+      font-weight: 800;
+      color: #16a34a;
+      background: #dcfce7;
+      padding: 3px 8px;
+      border-radius: 6px;
+      white-space: nowrap;
+    }
+
+    .var-select-btn {
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: #2563eb;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      padding: 3px 8px;
+      border-radius: 6px;
+      white-space: nowrap;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--text-muted);
+      background: var(--card-bg);
+      border-radius: 16px;
+      border: 2px dashed var(--border);
+    }
+
+    /* Fixed Bottom Action Bar */
+    .action-bar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: white;
+      border-top: 1px solid var(--border);
+      padding: 12px 16px;
+      display: flex;
+      gap: 10px;
+      box-shadow: 0 -4px 12px rgba(0,0,0,0.06);
+      max-width: 600px;
+      margin: 0 auto;
+      z-index: 99;
+    }
+
+    .btn-action {
+      flex: 1;
+      padding: 14px 10px;
+      border-radius: 12px;
+      border: none;
+      font-weight: 700;
+      font-size: 0.9rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+
+    .btn-secondary {
+      background: #f1f5f9;
+      color: var(--text-main);
+      border: 1px solid var(--border);
+      flex: 0.8;
+    }
+
+    .btn-whatsapp {
+      background: #25D366;
+      color: white;
+      box-shadow: 0 4px 10px rgba(37, 211, 102, 0.3);
+      flex: 1.4;
+    }
+
+    .btn-whatsapp:active {
+      transform: scale(0.97);
+    }
+
+    .btn-action:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="brand">📦 Interconti Comenzi</div>
+    <div class="status-badge">
+      <div class="dot"></div>
+      <span>22.584 repere</span>
+    </div>
+  </header>
+
+  <div class="container">
+
+    <!-- Zona Dictare -->
+    <div class="voice-section">
+      <button class="mic-btn" id="micBtn" onclick="toggleVoice()">
+        🎙️
+      </button>
+      <div class="mic-label" id="micStatus">Apasă pe microfon și dictează</div>
+      <div class="transcript-box" id="transcriptText">Poți dicta un singur produs sau o listă lungă continuă!</div>
+
+      <div class="manual-input">
+        <input type="text" id="manualText" placeholder="Sau scrie aici (chiar și mai multe repere)..." onkeypress="handleKeyPress(event)">
+        <button onclick="submitManual()">Adaugă</button>
+      </div>
+    </div>
+
+    <!-- Lista de comenzi -->
+    <div class="order-header">
+      <div class="order-title">
+        Lista de Comandă (<span id="itemsCount">0</span>)
+      </div>
+      <button class="clear-btn" id="clearBtn" onclick="clearAll()" style="display: none;">Golește lista</button>
+    </div>
+
+    <div id="itemsContainer">
+      <div class="empty-state">
+        <p style="font-size: 1.5rem; margin-bottom: 8px;">📋</p>
+        <p style="font-weight: 600;">Lista este goală</p>
+        <p style="font-size: 0.85rem; margin-top: 4px;">Apasă microfonul de sus și dictează reperele.</p>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Bara de acțiune jos -->
+  <div class="action-bar">
+    <button class="btn-action btn-secondary" id="wordBtn" onclick="generateWord()" disabled>
+      📄 Word (.docx)
+    </button>
+    <button class="btn-action btn-whatsapp" id="waBtn" onclick="sendWhatsApp()" disabled>
+      💬 Trimite la Bogdan
+    </button>
+  </div>
+
+  <script>
+    let orderItems = [];
+    let isListening = false;
+    let recognition = null;
+
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      recognition = new SpeechRecognition();
+      recognition.lang = 'ro-RO';
+      recognition.continuous = false;
+      recognition.interimResults = false;
+
+      recognition.onstart = function() {
+        isListening = true;
+        document.getElementById('micBtn').classList.add('listening');
+        document.getElementById('micStatus').innerText = 'Te ascult... vorbește!';
+        document.getElementById('transcriptText').innerText = 'Înregistrare audio...';
+      };
+
+      recognition.onresult = function(event) {
+        const text = event.results[0][0].transcript;
+        document.getElementById('transcriptText').innerText = `„${text}”`;
+        searchAndAdd(text);
+      };
+
+      recognition.onerror = function(event) {
+        console.error("Speech error", event);
+        stopVoice();
+        document.getElementById('transcriptText').innerText = 'Eroare microfon sau nu s-a auzit clar.';
+      };
+
+      recognition.onend = function() {
+        stopVoice();
+      };
+    } else {
+      document.getElementById('micStatus').innerText = 'Microfonul nu e suportat direct în acest browser';
+      document.getElementById('micBtn').style.opacity = '0.5';
+    }
+
+    function toggleVoice() {
+      if (!recognition) {
+        alert("Browserul nu suportă Web Speech. Poți folosi tastatura vocală de pe telefon în câmpul de mai jos!");
+        return;
+      }
+      if (isListening) {
+        recognition.stop();
+        stopVoice();
+      } else {
+        recognition.start();
+      }
+    }
+
+    function stopVoice() {
+      isListening = false;
+      document.getElementById('micBtn').classList.remove('listening');
+      document.getElementById('micStatus').innerText = 'Apasă pe microfon și dictează';
+    }
+
+    function handleKeyPress(e) {
+      if (e.key === 'Enter') {
+        submitManual();
+      }
+    }
+
+    function submitManual() {
+      const input = document.getElementById('manualText');
+      const val = input.value.trim();
+      if (!val) return;
+      input.value = '';
+      searchAndAdd(val);
+    }
+
+    async function searchAndAdd(query) {
+      document.getElementById('transcriptText').innerText = `Procesare: „${query}”...`;
+      try {
+        const res = await fetch('/api/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: query })
+        });
+        const data = await res.json();
+        
+        if (data.found && data.items && data.items.length > 0) {
+          data.items.forEach(it => {
+            // Unificăm cel mai bun reper cu alternativele găsite
+            const rawCandidates = [it.best_match, ...(it.other_candidates || [])];
+            const uniqueCandidates = [];
+            const seen = new Set();
+            for (const c of rawCandidates) {
+              if (c && c.denumire && !seen.has(c.denumire)) {
+                seen.add(c.denumire);
+                uniqueCandidates.push(c);
+              }
+            }
+
+            const item = {
+              id: Date.now() + Math.random(),
+              denumire: it.best_match.denumire,
+              cod: it.best_match.cod,
+              cod_extern: it.best_match.cod_extern,
+              cantitate: it.cantitate || 1,
+              um: it.um || 'buc',
+              is_ambiguous: it.is_ambiguous,
+              dictat: it.query_original,
+              candidates: uniqueCandidates,
+              showVariants: it.is_ambiguous, // dacă necesită verificare, deschide direct variantele!
+              was_manually_selected: false
+            };
+            orderItems.push(item);
+          });
+          renderList();
+          document.getElementById('transcriptText').innerText = `✅ Adăugate ${data.items.length} repere pe listă!`;
+        } else {
+          alert(data.message || "Nu s-a putut identifica reperul.");
+          document.getElementById('transcriptText').innerText = `❌ Nu am găsit: „${query}”`;
+        }
+      } catch (err) {
+        console.error(err);
+        alert("Eroare de comunicare cu serverul.");
+      }
+    }
+
+    function toggleVariants(id) {
+      const it = orderItems.find(x => x.id === id);
+      if (!it) return;
+      it.showVariants = !it.showVariants;
+      renderList();
+    }
+
+    function selectVariant(id, codExtern, denumire, cod) {
+      const it = orderItems.find(x => x.id === id);
+      if (!it) return;
+      it.denumire = denumire;
+      it.cod_extern = codExtern;
+      it.cod = cod;
+      it.is_ambiguous = false;
+      it.was_manually_selected = true;
+      it.showVariants = false;
+      renderList();
+    }
+
+    function updateQty(id, delta) {
+      const it = orderItems.find(x => x.id === id);
+      if (!it) return;
+      it.cantitate = Math.max(1, it.cantitate + delta);
+      renderList();
+    }
+
+    function removeItem(id) {
+      orderItems = orderItems.filter(x => x.id !== id);
+      renderList();
+    }
+
+    function clearAll() {
+      if (confirm("Sigur vrei să golești toată lista curentă?")) {
+        orderItems = [];
+        renderList();
+      }
+    }
+
+    function renderList() {
+      const container = document.getElementById('itemsContainer');
+      const countEl = document.getElementById('itemsCount');
+      const clearBtn = document.getElementById('clearBtn');
+      const wordBtn = document.getElementById('wordBtn');
+      const waBtn = document.getElementById('waBtn');
+
+      countEl.innerText = orderItems.length;
+
+      if (orderItems.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <p style="font-size: 1.5rem; margin-bottom: 8px;">📋</p>
+            <p style="font-weight: 600;">Lista este goală</p>
+            <p style="font-size: 0.85rem; margin-top: 4px;">Apasă microfonul de sus și dictează reperele.</p>
+          </div>
+        `;
+        clearBtn.style.display = 'none';
+        wordBtn.disabled = true;
+        waBtn.disabled = true;
+        return;
+      }
+
+      clearBtn.style.display = 'block';
+      wordBtn.disabled = false;
+      waBtn.disabled = false;
+
+      let html = '';
+      orderItems.forEach((it, index) => {
+        const ambigClass = it.is_ambiguous ? 'ambiguous' : '';
+        const warnTag = it.is_ambiguous ? `
+          <div class="warn-badge">[ ! ] NECESITĂ VERIFICARE</div>
+        ` : (it.was_manually_selected ? `
+          <div class="verified-badge">✓ VARIANTĂ CONFIRMATĂ</div>
+        ` : '');
+
+        let variantsHtml = '';
+        if (it.candidates && it.candidates.length > 1) {
+          const variantsVisible = it.showVariants ? 'block' : 'none';
+          const toggleText = it.showVariants ? '▲ Ascunde variantele' : `🔄 Schimbă varianta (${it.candidates.length} opțiuni) ▼`;
+          
+          variantsHtml = `
+            <div class="variants-wrapper">
+              <button class="variant-toggle-btn" onclick="toggleVariants(${it.id})">${toggleText}</button>
+              <div class="variants-box" id="variants-${it.id}" style="display: ${variantsVisible};">
+                <div class="variants-title">Apasă pe varianta dorită:</div>
+                <div class="variants-list">
+                  ${it.candidates.map(c => {
+                    const isSelected = (c.cod_extern && c.cod_extern === it.cod_extern) || (c.denumire === it.denumire);
+                    const safeDenumire = (c.denumire || '').replace(/'/g, "\\'");
+                    const safeCodExtern = (c.cod_extern || '').replace(/'/g, "\\'");
+                    const safeCod = (c.cod || '').replace(/'/g, "\\'");
+                    return `
+                      <div class="variant-chip ${isSelected ? 'selected' : ''}" onclick="selectVariant(${it.id}, '${safeCodExtern}', '${safeDenumire}', '${safeCod}')">
+                        <div class="var-info">
+                          <div class="var-name">${c.denumire}</div>
+                          <div class="var-code">Cod: ${c.cod_extern || c.cod || '-'}</div>
+                        </div>
+                        ${isSelected ? '<span class="var-check">✓ ALES</span>' : '<span class="var-select-btn">Alege</span>'}
+                      </div>
+                    `;
+                  }).join('')}
+                </div>
+              </div>
+            </div>
+          `;
+        }
+
+        html += `
+          <div class="item-card ${ambigClass}">
+            <div class="card-top">
+              <div>
+                <div class="item-name">${index + 1}. ${it.denumire}</div>
+                ${warnTag}
+              </div>
+              <button class="del-btn" onclick="removeItem(${it.id})" title="Șterge">✕</button>
+            </div>
+            ${variantsHtml}
+            <div class="card-bottom">
+              <div class="item-code">Cod: ${it.cod_extern || it.cod || '-'}</div>
+              <div class="qty-controls">
+                <button class="qty-btn" onclick="updateQty(${it.id}, -1)">-</button>
+                <div class="qty-display">${it.cantitate} ${it.um}</div>
+                <button class="qty-btn" onclick="updateQty(${it.id}, 1)">+</button>
+              </div>
+            </div>
+          </div>
+        `;
+      });
+
+      container.innerHTML = html;
+    }
+
+    async function generateWord() {
+      if (orderItems.length === 0) return;
+      try {
+        const res = await fetch('/api/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items: orderItems })
+        });
+        const data = await res.json();
+        if (data.success) {
+          window.location.href = data.download_url;
+        } else {
+          alert("Eroare la generarea documentului Word.");
+        }
+      } catch (err) {
+        console.error(err);
+        alert("Eroare la conectare.");
+      }
+    }
+
+    async function sendWhatsApp() {
+      if (orderItems.length === 0) return;
+      const waBtn = document.getElementById('waBtn');
+      waBtn.innerText = '⏳ Se pregătește comanda...';
+      waBtn.disabled = true;
+
+      try {
+        const res = await fetch('/api/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items: orderItems })
+        });
+        const data = await res.json();
+        
+        if (data.success) {
+          let sharedDirectly = false;
+          if (navigator.canShare) {
+            try {
+              const fileRes = await fetch(data.download_url);
+              const blob = await fileRes.blob();
+              const file = new File([blob], data.filename, {
+                type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              });
+              
+              if (navigator.canShare({ files: [file] })) {
+                await navigator.share({
+                  title: 'Comandă Interconti',
+                  text: 'Comandă depozit gata de printat',
+                  files: [file]
+                });
+                sharedDirectly = true;
+              }
+            } catch (shareErr) {
+              console.log("Share anulat, se merge pe WhatsApp direct link", shareErr);
+            }
+          }
+
+          if (!sharedDirectly) {
+            window.location.href = data.whatsapp_url;
+          }
+        } else {
+          alert("Eroare la procesarea comenzii.");
+        }
+      } catch (err) {
+        console.error(err);
+        alert("Eroare la conectare.");
+      } finally {
+        waBtn.innerText = '💬 Trimite la Bogdan';
+        waBtn.disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>
